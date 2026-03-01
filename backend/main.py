@@ -346,7 +346,7 @@ async def add_place(
     lat_v = float(lat) if lat else None
     lng_v = float(lng) if lng else None
     
-    cur.execute("""
+    cur.execute(f"""
     INSERT INTO places (
         id, country, district_id, category_id, name, description, lat, lng,
         cost_min, cost_max, is_indoor, rain_note, safety_note, created_at,
@@ -359,7 +359,7 @@ async def add_place(
         outdoor_heavy, rain_sensitivity, best_season, monsoon_note,
         data_source, verified, last_verified_at, status, admin_notes, ai_summary, source_id, embedding_text
     )
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES ({','.join(['?']*52)})
     """, (
         place_id, country, district_id, category_id, name, description, lat_v, lng_v,
         int(cost_min or 0), int(cost_max or 0), 1 if is_indoor.lower()=="true" else 0,
@@ -464,3 +464,107 @@ async def export_csv(status: Optional[str] = "approved"):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=places_export_{datetime.now().strftime('%Y%m%d')}.csv"}
     )
+
+# --- Search, Filter & Quality Endpoints ---
+
+@app.get("/api/places")
+async def get_places(
+    name: Optional[str] = None,
+    district_id: Optional[str] = None,
+    category_id: Optional[str] = None,
+    tags: Optional[str] = None,
+    is_indoor: Optional[str] = None,
+    status: Optional[str] = None
+):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    
+    query = """
+        SELECT p.*, d.name as district_name, c.name as category_name 
+        FROM places p
+        LEFT JOIN districts d ON p.district_id = d.id
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE 1=1
+    """
+    params = []
+    
+    if name:
+        query += " AND p.name LIKE ?"
+        params.append(f"%{name}%")
+    if district_id:
+        query += " AND p.district_id = ?"
+        params.append(district_id)
+    if category_id:
+        query += " AND p.category_id = ?"
+        params.append(category_id)
+    if tags:
+        query += " AND p.tags LIKE ?"
+        params.append(f"%{tags}%")
+    if is_indoor is not None:
+        val = 1 if is_indoor.lower() == "true" else 0
+        query += " AND p.is_indoor = ?"
+        params.append(val)
+    if status:
+        query += " AND p.status = ?"
+        params.append(status)
+        
+    query += " ORDER BY p.created_at DESC"
+    
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    
+    res = []
+    for r in rows:
+        d = dict(r)
+        # Fetch images for listing
+        cur.execute("SELECT image_path, caption, image_type, is_cover FROM place_images WHERE place_id = ?", (d['id'],))
+        d['images'] = [dict(img) for img in cur.fetchall()]
+        res.append(d)
+        
+    conn.close()
+    return res
+
+@app.get("/api/reports/quality")
+async def get_quality_report():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    
+    # Places missing lat/lng
+    cur.execute("SELECT id, name FROM places WHERE lat IS NULL OR lng IS NULL")
+    missing_coords = [dict(r) for r in cur.fetchall()]
+    
+    # Places with no images
+    cur.execute("""
+        SELECT id, name FROM places 
+        WHERE id NOT IN (SELECT DISTINCT place_id FROM place_images)
+    """)
+    no_images = [dict(r) for r in cur.fetchall()]
+    
+    # Places with no cover image (if images exist)
+    cur.execute("""
+        SELECT id, name FROM places 
+        WHERE id IN (SELECT DISTINCT place_id FROM place_images)
+        AND id NOT IN (SELECT DISTINCT place_id FROM place_images WHERE is_cover = 1)
+    """)
+    no_cover = [dict(r) for r in cur.fetchall()]
+    
+    # Places with no safety notes
+    cur.execute("SELECT id, name FROM places WHERE safety_note IS NULL OR safety_note = ''")
+    no_safety = [dict(r) for r in cur.fetchall()]
+    
+    conn.close()
+    
+    return {
+        "missing_coordinates": missing_coords,
+        "no_images": no_images,
+        "no_cover_image": no_cover,
+        "no_safety_notes": no_safety,
+        "summary": {
+            "missing_coords_count": len(missing_coords),
+            "no_images_count": len(no_images),
+            "no_cover_count": len(no_cover),
+            "no_safety_count": len(no_safety)
+        }
+    }

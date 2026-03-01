@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
+import Link from 'next/link';
 
 type ImageMeta = {
   file: File;
@@ -205,9 +206,23 @@ export default function Home() {
 
   return (
     <main className="container">
-      <div className="header">
-        <h1>TripMe.ai Portal</h1>
-        <p>Comprehensive Data Collection for Context-Aware AI</p>
+      <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div style={{ textAlign: 'left' }}>
+          <h1 style={{ margin: 0 }}>TripMe.ai Portal</h1>
+          <p style={{ margin: 0 }}>Comprehensive Data Collection for Context-Aware AI</p>
+        </div>
+        <Link href="/admin" style={{ 
+          background: 'rgba(233, 69, 96, 0.1)', 
+          color: '#e94560', 
+          padding: '0.8rem 1.5rem', 
+          borderRadius: '12px',
+          textDecoration: 'none',
+          fontWeight: 600,
+          border: '1px solid #e94560',
+          transition: '0.3s'
+        }}>
+          Admin Dashboard
+        </Link>
       </div>
 
       {submitStatus === 'success' && <div className="alert alert-success" style={{ marginBottom: '2rem' }}>{message}</div>}
@@ -306,6 +321,11 @@ export default function Home() {
               <button type="button" className="btn-location" onClick={fillCurrentLocation}>📍 Use My Current Location</button>
             </div>
           </div>
+          {(!formData.lat || !formData.lng) && (
+            <div style={{ marginTop: '1rem', color: '#ffcc00', fontSize: '0.85rem', background: 'rgba(255, 204, 0, 0.05)', padding: '0.8rem', borderRadius: '12px', border: '1px solid rgba(255, 204, 0, 0.2)' }}>
+              💡 <strong>Quality Tip:</strong> Latitude & Longitude are missing. Adding them helps AI geofencing and "Nearby Places" features!
+            </div>
+          )}
           <div className="form-row">
             <div className="form-group">
               <label>Short Address / City</label>
