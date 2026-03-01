@@ -1,0 +1,44 @@
+[
+  {
+    "country":"Sri Lanka",
+    "district":"Kandy",
+    "name":"Temple of the Tooth",
+    "category":"culture",
+    "description":"Sacred temple in Kandy city.",
+    "lat":7.2936,
+    "lng":80.6413,
+    "cost_min":1000,
+    "cost_max":2500,
+    "is_indoor":true,
+    "rain_note":"Good indoor option in rain.",
+    "safety_note":"Avoid isolated areas late night."
+  },
+  {
+    "country":"Sri Lanka",
+    "district":"Galle",
+    "name":"Galle Fort",
+    "category":"culture",
+    "description":"Historic fort with cafes and shops.",
+    "lat":6.0269,
+    "lng":80.2170,
+    "cost_min":0,
+    "cost_max":2000,
+    "is_indoor":false,
+    "rain_note":"If raining, do museums/cafes inside the fort.",
+    "safety_note":"Crowded areas—watch belongings."
+  },
+  {
+    "country":"Sri Lanka",
+    "district":"Badulla",
+    "name":"Nine Arches Bridge",
+    "category":"nature",
+    "description":"Famous bridge in Ella surrounded by tea plantations.",
+    "lat":6.8767,
+    "lng":81.0600,
+    "cost_min":0,
+    "cost_max":500,
+    "is_indoor":false,
+    "rain_note":"Slippery when raining, caution needed.",
+    "safety_note":"Watch out for trains. Keep distance from edges."
+  }
+]
