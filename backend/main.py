@@ -1,15 +1,23 @@
 import os
 import uuid
 import sqlite3
+import shutil
 from datetime import datetime
-from typing import List, Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from typing import Optional, List
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import csv
+import io
+from PIL import Image
 
 DB_PATH = "tripme.db"
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+class StatusUpdate(BaseModel):
+    status: str
 
 app = FastAPI()
 
@@ -122,6 +130,7 @@ def init_db():
         id TEXT PRIMARY KEY,
         place_id TEXT,
         image_path TEXT,
+        thumbnail_path TEXT,
         created_at TEXT,
         caption TEXT,
         image_type TEXT,
@@ -129,6 +138,12 @@ def init_db():
         FOREIGN KEY (place_id) REFERENCES places (id)
     )
     """)
+
+    # Maintenance: Add thumbnail_path if it doesn't exist (migration)
+    try:
+        cur.execute("ALTER TABLE place_images ADD COLUMN thumbnail_path TEXT")
+    except:
+        pass
 
     conn.commit()
     seed_data(conn)
@@ -220,6 +235,30 @@ def seed_data(conn):
 init_db()
 
 # --- API Endpoints ---
+
+def process_image(img_file: UploadFile, place_id: str, image_index: int):
+    """Resizes, converts to WebP, and generates a thumbnail."""
+    img_data = img_file.file.read()
+    img = Image.open(io.BytesIO(img_data))
+    
+    # Original but optimized (Max width 1920)
+    if img.width > 1920:
+        ratio = 1920 / img.width
+        img = img.resize((1920, int(img.height * ratio)), Image.LANCZOS)
+    
+    filename_base = f"{place_id}_{image_index}"
+    original_path = os.path.join(UPLOAD_DIR, f"{filename_base}.webp")
+    thumbnail_path = os.path.join(UPLOAD_DIR, f"{filename_base}_thumb.webp")
+    
+    # Save optimized original
+    img.save(original_path, format="WEBP", quality=80)
+    
+    # Generate thumbnail (400px width)
+    thumb_ratio = 400 / img.width
+    thumb_img = img.resize((400, int(img.height * thumb_ratio)), Image.LANCZOS)
+    thumb_img.save(thumbnail_path, format="WEBP", quality=70)
+    
+    return f"uploads/{filename_base}.webp", f"uploads/{filename_base}_thumb.webp"
 
 @app.get("/api/districts")
 async def get_districts():
@@ -377,23 +416,32 @@ async def add_place(
 
     saved_images = []
     for i, img in enumerate(images[:5]):
-        ext = os.path.splitext(img.filename)[1].lower() or ".jpg"
-        img_id = str(uuid.uuid4())
-        filename = f"{place_id}_{img_id}{ext}"
-        path = os.path.join(UPLOAD_DIR, filename)
+        try:
+            # Optimize image
+            original_rel, thumb_rel = process_image(img, place_id, i)
+            
+            img_id = str(uuid.uuid4())
+            caption = image_captions[i] if i < len(image_captions) else ""
+            img_type = image_types[i] if i < len(image_types) else "outdoor"
+            is_cov = 1 if (i < len(image_covers) and image_covers[i].lower() == "true") else 0
+            
+            # Enforce first image as cover if none specified
+            if i == 0 and not any(ic.lower() == "true" for ic in image_covers):
+                is_cov = 1
 
-        with open(path, "wb") as f:
-            f.write(await img.read())
-
-        cap = image_captions[i] if i < len(image_captions) else ""
-        itype = image_types[i] if i < len(image_types) else ""
-        icover = 1 if (i < len(image_covers) and image_covers[i].lower() == "true") else 0
-
-        cur.execute("""
-        INSERT INTO place_images (id, place_id, image_path, created_at, caption, image_type, is_cover)
-        VALUES (?,?,?,?,?,?,?)
-        """, (img_id, place_id, path, now, cap, itype, icover))
-        saved_images.append(path)
+            cur.execute("""
+            INSERT INTO place_images (id, place_id, image_path, thumbnail_path, created_at, caption, image_type, is_cover)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (img_id, place_id, original_rel, thumb_rel, now, caption, img_type, is_cov))
+            
+            saved_images.append({
+                "id": img_id,
+                "path": original_rel,
+                "thumbnail": thumb_rel,
+                "is_cover": bool(is_cov)
+            })
+        except Exception as e:
+            print(f"Error processing image {i}: {e}")
 
     conn.commit()
     conn.close()
@@ -568,3 +616,206 @@ async def get_quality_report():
             "no_safety_count": len(no_safety)
         }
     }
+
+@app.delete("/api/places/{place_id}")
+async def delete_place(place_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    # 1. Get image paths to delete from disk
+    cur.execute("SELECT image_path, thumbnail_path FROM place_images WHERE place_id = ?", (place_id,))
+    images = cur.fetchall()
+    
+    for img_path, thumb_path in images:
+        if img_path:
+            abs_img = os.path.join(os.getcwd(), img_path)
+            if os.path.exists(abs_img):
+                try:
+                    os.remove(abs_img)
+                except: pass
+        if thumb_path:
+            abs_thumb = os.path.join(os.getcwd(), thumb_path)
+            if os.path.exists(abs_thumb):
+                try:
+                    os.remove(abs_thumb)
+                except: pass
+                
+    # 2. Delete from DB
+    cur.execute("DELETE FROM place_images WHERE place_id = ?", (place_id,))
+    cur.execute("DELETE FROM places WHERE id = ?", (place_id,))
+    
+    conn.commit()
+    conn.close()
+    return {"ok": True, "message": "Place and associated images deleted."}
+
+@app.patch("/api/places/{place_id}/status")
+async def update_place_status(place_id: str, update: StatusUpdate):
+    if update.status not in ["approved", "pending_review", "rejected"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+        
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    now = datetime.utcnow().isoformat()
+    cur.execute("""
+        UPDATE places 
+        SET status = ?, last_verified_at = ? 
+        WHERE id = ?
+    """, (update.status, now if update.status == "approved" else None, place_id))
+    
+    if cur.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Place not found")
+        
+    conn.commit()
+    conn.close()
+    return {"ok": True, "status": update.status}
+
+@app.patch("/api/places/{place_id}")
+async def update_place(place_id: str, data: dict):
+    """Generic endpoint to update place fields."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    # Filter valid fields (security measure)
+    allowed_fields = [
+        "name", "description", "lat", "lng", "cost_min", "cost_max", "is_indoor",
+        "rain_note", "safety_note", "duration_min", "best_time", "open_hours",
+        "closed_day", "tags", "crowd_level", "noise_level", "ticket_price",
+        "food_avg_per_person", "parking_fee", "extra_cost_notes", "address",
+        "nearby_places", "safety_level", "safety_reason", "scam_warning",
+        "dress_code_req", "special_rules", "wheelchair_access", "stairs_heavy",
+        "long_walk", "toilets", "parking_avail", "food_nearby", "cash_only",
+        "mobile_signal", "outdoor_heavy", "rain_sensitivity", "best_season",
+        "monsoon_note"
+    ]
+    
+    updates = []
+    params = []
+    
+    for k, v in data.items():
+        if k in allowed_fields:
+            updates.append(f"{k} = ?")
+            params.append(v)
+            
+    if not updates:
+        conn.close()
+        return {"ok": False, "message": "No valid fields provided."}
+        
+    params.append(place_id)
+    query = f"UPDATE places SET {', '.join(updates)} WHERE id = ?"
+    
+    cur.execute(query, params)
+    conn.commit()
+    conn.close()
+    
+    return {"ok": True, "message": "Place updated successfully."}
+
+@app.delete("/api/places/{place_id}/images/{image_id}")
+async def delete_place_image(place_id: str, image_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    cur.execute("SELECT image_path, thumbnail_path FROM place_images WHERE id = ? AND place_id = ?", (image_id, place_id))
+    img = cur.fetchone()
+    if not img:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    img_path, thumb_path = img
+    
+    # Delete from OS
+    if img_path:
+        abs_img = os.path.join(os.getcwd(), img_path)
+        if os.path.exists(abs_img):
+            try: os.remove(abs_img)
+            except: pass
+    if thumb_path:
+        abs_thumb = os.path.join(os.getcwd(), thumb_path)
+        if os.path.exists(abs_thumb):
+            try: os.remove(abs_thumb)
+            except: pass
+            
+    # Delete from DB
+    cur.execute("DELETE FROM place_images WHERE id = ?", (image_id,))
+    
+    # If this was the last cover image, we should probably set another image as cover
+    # but for simplicity, we let the frontend enforce a new cover if requested.
+    conn.commit()
+    conn.close()
+    
+    return {"ok": True, "message": "Image deleted"}
+
+@app.patch("/api/places/{place_id}/images/{image_id}/cover")
+async def set_cover_image(place_id: str, image_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    cur.execute("SELECT id FROM place_images WHERE id = ? AND place_id = ?", (image_id, place_id))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    cur.execute("UPDATE place_images SET is_cover = 0 WHERE place_id = ?", (place_id,))
+    cur.execute("UPDATE place_images SET is_cover = 1 WHERE id = ?", (image_id,))
+    
+    conn.commit()
+    conn.close()
+    
+    # Return updated images list for frontend convenience
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM place_images WHERE place_id = ?", (place_id,))
+    images = [dict(img) for img in cur.fetchall()]
+    conn.close()
+    
+    return {"ok": True, "message": "Cover image updated", "images": images}
+
+@app.post("/api/places/{place_id}/images")
+async def add_place_images(
+    place_id: str,
+    images: List[UploadFile] = File(...),
+    captions: str = Form("[]") 
+):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    
+    cur.execute("SELECT id FROM places WHERE id = ?", (place_id,))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Place not found")
+        
+    import json
+    try:
+        captions_list = json.loads(captions)
+    except:
+        captions_list = []
+        
+    added = []
+    
+    for i, file in enumerate(images):
+        try:
+            rel_path, thumb_rel_path = process_image(file, place_id, uuid.uuid4().hex[:6])
+            cap = captions_list[i] if i < len(captions_list) else ""
+        except Exception as e:
+            continue # skip invalid images
+        
+        cur.execute("""
+            INSERT INTO place_images (place_id, image_path, thumbnail_path, caption, image_type, is_cover) 
+            VALUES (?, ?, ?, ?, ?, 0)
+        """, (place_id, rel_path, thumb_rel_path, cap, "general"))
+        
+        added.append({
+            "id": cur.lastrowid,
+            "place_id": place_id,
+            "image_path": rel_path,
+            "thumbnail_path": thumb_rel_path,
+            "caption": cap,
+            "image_type": "general",
+            "is_cover": 0
+        })
+        
+    conn.commit()
+    conn.close()
+    return {"ok": True, "added_images": added}
