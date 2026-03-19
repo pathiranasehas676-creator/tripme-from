@@ -1,59 +1,53 @@
-# TripMe.ai - Context-Aware Travel Intelligence Platform
+TripMe.ai – Context-Aware Travel Intelligence Platform
 
-TripMe.ai යනු ශ්‍රී ලංකාවේ චාරිකා සැලසුම් කිරීම පහසු කිරීම සඳහා නිර්මාණය කරන ලද, කෘතිම බුද්ධිය (AI) මූලික කරගත් නවීන මෘදුකාංග පද්ධතියකි. මෙය හුදු තොරතුරු ගබඩාවක් පමණක් නොව, පුද්ගලාරෝපිත සංචාරක අත්දැකීම් (Context-Aware Travel Planning) ලබා දීම සඳහා සැකසූ පද්ධතියකි.
+TripMe.ai is an advanced, AI-powered software platform designed to simplify travel planning in Sri Lanka. It goes beyond being just a data repository by delivering personalized, context-aware travel experiences tailored to each user.
 
-## 🚀 පද්ධතියෙන් කළ හැකි දේ (Key Features)
+🚀 Key Features
+1. Smart Data Collection
 
-### 1. ස්ථාන දත්ත රැස් කිරීම (Smart Data Collection)
-- සංචාරක ස්ථාන වල මූලික තොරතුරු පමණක් නොව, කාලගුණය, ආරක්ෂාව, මුදල් වියදම් සහ පහසුකම් පිළිබඳ සියුම් දත්ත ඇතුළත් කිරීමේ හැකියාව.
-- **Geolocation:** ඔබ සිටින ස්ථානය අනුව ස්වයංක්‍රීයව Latitude/Longitude ලබා ගැනීම.
-- **Media Optimization:** ඇතුළත් කරන පින්තූර ස්වයංක්‍රීයව WebP ආකෘතියට හරවා වේගවත් preview ලබා දීම.
+Captures not only basic information about travel destinations, but also detailed data such as weather conditions, safety levels, estimated costs, and available facilities.
 
-### 2. පරිපාලන පාලක පුවරුව (Admin Portal)
-- ඇතුළත් කරන ලද ස්ථාන පරීක්ෂා කර අනුමත කිරීම (Approve) හෝ ප්‍රතික්ෂේප කිරීම (Reject).
-- **Data Quality Audit:** දත්ත වල පවතින අඩුපාඩු (උදා: පින්තූර නැති ස්ථාන, පිහිටීම නැති ස්ථාන) හඳුනාගෙන ඒවා පෙන්වීම.
-- **Export Data:** පද්ධතියේ ඇති දත්ත JSON සහ CSV ආකෘති වලින් ලබා ගැනීමේ පහසුකම.
+Geolocation: Automatically detects the user's location and retrieves accurate latitude and longitude coordinates.
 
-### 3. AI සූදානම (AI-Ready Infrastructure)
-- පද්ධතිය සතුව පවතින "Context-Aware" දත්ත (Crowd level, Noise, Best time) මඟින් AI මාදිලි වලට ඉතා නිවැරදි සංචාරක උපදෙස් ලබා දීමට මාවත සලසයි.
-- දත්ත කාණ්ඩ (Categories) සහ දිස්ත්‍රික්ක (Districts) අනුව ක්‍රමවත්ව සැකසූ දත්ත ගබඩාව.
+Media Optimization: Uploaded images are automatically converted into WebP format for faster loading and smooth previews.
 
----
+2. Admin Portal
 
-## 🛠 භාවිතා කර ඇති තාක්ෂණයන් (Tech Stack)
+Enables administrators to review, approve, or reject submitted locations.
 
-### Frontend (User Interface)
-- **Framework:** Next.js 15+ (App Router)
-- **Language:** TypeScript
-- **Styling:** Vanilla CSS (Glassmorphism design)
+Data Quality Audit: Identifies missing or incomplete data (e.g., locations without images or coordinates) and highlights them for correction.
 
-### Backend (Data Engine)
-- **API:** Python FastAPI
-- **Database:** SQLite (tripme.db)
-- **Image Processing:** Pillow (for WebP conversion)
-- **Server:** Uvicorn
+Export Data: Allows exporting system data in JSON and CSV formats for analysis or external use.
 
----
+3. AI-Ready Infrastructure
 
-## 💻 ලෝකල් එකේ රන් කරන ආකාරය (Setup Instructions)
+Built with context-aware datasets (such as crowd levels, noise levels, and best visiting times) to support highly accurate AI-driven travel recommendations.
 
-### Backend එක පණ ගැන්වීමට:
-1. `backend` folder එකට යන්න.
-2. `pip install -r requirements.txt` ලබා දෙන්න.
-3. `uvicorn main:app --port 8000 --reload` මඟින් සර්වර් එක ආරම්භ කරන්න.
+Structured database organized by categories and districts for efficient data management and scalability.
 
-### Frontend එක පණ ගැන්වීමට:
-1. `frontend` folder එකට යන්න.
-2. `npm install` ලබා දෙන්න.
-3. `npm run dev` ලබා දෙන්න.
+🛠 Tech Stack
+Frontend (User Interface)
 
-**URL:** [http://localhost:3005](http://localhost:3005)
+Framework: Next.js 15+ (App Router)
 
----
+Language: TypeScript
 
-## 🔐 රහස්පද (Access Credentials)
-- **Admin Login:** [http://localhost:3005/admin](http://localhost:3005/admin)
-- **Password:** `admin123`
+Styling: Vanilla CSS (Glassmorphism Design)
 
----
-© 2026 TripMe.ai Team. Precision engineered for Sri Lankan Tourism.
+Backend (Data Engine)
+
+API: Python FastAPI
+
+Database: SQLite (tripme.db)
+
+Image Processing: Pillow (for WebP conversion)
+
+Server: Uvicorn
+
+If you want, I can also:
+
+Turn this into a presentation (slides)
+
+Make it GitHub README style
+
+Or upgrade it to a startup pitch (investor-level) 🚀
